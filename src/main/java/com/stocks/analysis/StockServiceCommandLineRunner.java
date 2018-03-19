@@ -65,7 +65,7 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
 		StopWatch stopWatch = new StopWatch();
 		stopWatch.start();
 		historicalPricesJdbcTemplate.cleanDatabase();
-		String[] tickers = new String[] {"MU"};
+		String[] tickers = new String[] {"AAPL"};
 		List<Future<?>> futures = new ArrayList<Future<?>>();
 		Arrays.asList(tickers).forEach(ticker -> {
 			Future<?> future = downloadDataExecutorService.submit(downloadDataFutureTask(ticker));
@@ -78,7 +78,8 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
 		
 		stocks.forEach(stock -> {
 			try {
-				runBackTest(stock);
+				// runBackTest(stock);
+			    cciTest(stock);
 				strategyResults(trades);
 				trades.clear();
 			} catch (Exception e) {
@@ -284,17 +285,33 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
 		}
 	}
 	
-	private void rsiTest(String ticker) throws Exception {
-		double balance = initialBalance;
-		double cash = balance;
-		int shares = 0;
+	private void rsiTest(Stock stock) throws Exception {
+	    double balance = initialBalance;
+        double cash = balance;
+        int shares = 0;
 
-		historicalPricesJdbcTemplate.cleanDatabase();
-		stockAnalysisService.downloadHistoricalPrices(ticker);
-		Stock stock = new Stock(ticker, historicalPricesJdbcTemplate.getHistoricalPrices(ticker));
-		List<HistoricalPrices> historicalPrices = stock.getHistoricalPrices();
-		boolean inTrade = false;
-		String entryTradeDate = "";
+        String ticker = stock.getTicker();
+        List<HistoricalPrices> historicalPrices = stock.getHistoricalPrices();
+        
+        boolean inTrade = false;
+        String entryTradeDate = "";
+        
+        PrintWriter pw = new PrintWriter(new File(OUTPUT_FOLDER + "/" + ticker + "-rsi-backtest.csv"));
+        StringBuilder sb = new StringBuilder();
+        sb.append("date");
+        sb.append(',');
+        sb.append("priceOpen");
+        sb.append(",");
+        sb.append("priceClose");
+        sb.append(",");
+        sb.append("rsi");
+        sb.append(",");
+        sb.append("buy/sell (rsi)");
+        sb.append(",");
+        sb.append("returns");
+        sb.append("\n");
+        pw.write(sb.toString());
+        sb.setLength(0);
 		
 		for (int i = 75; i < historicalPrices.size(); i++) {
 			String dateTomorrow = "";
@@ -310,40 +327,64 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
 			double rsiYesterday = technicals.rsi(stock, 14, i - 1);
 			double rsiToday = technicals.rsi(stock, 14, i);
 			
-			if(rsiYesterday <= 55 && rsiToday > 55 && !inTrade) {
-				// buy
-				shares = (int)Math.floor(balance / openPriceTomorrow);
-				cash = balance - (shares * openPriceTomorrow);
-				System.out.printf(dateTomorrow + ": BUY (%.2f) balance: %.2f\n", openPriceTomorrow, balance);
-				trades.put(dateTomorrow, new Trade(dateTomorrow, openPriceTomorrow, openPriceTomorrow));
-				entryTradeDate = dateTomorrow;
-				inTrade = true;
-			}
+			sb.append(dateToday);
+            sb.append(",");
+            sb.append(openPriceToday);
+            sb.append(",");
+            sb.append(closePriceToday);
+            sb.append(",");
+            sb.append(rsiToday);
+            sb.append(",");
 			
-			if (inTrade && trades.get(entryTradeDate).getMaxPrice() < closePriceToday) {
-				// Update max price
-				trades.get(entryTradeDate).setMaxPrice(closePriceToday);
+			if(!inTrade) {
+			    if(rsiYesterday < 50 && rsiToday >= 50) {
+			        // buy
+	                shares = (int)Math.floor(balance / openPriceTomorrow);
+	                cash = balance - (shares * openPriceTomorrow);
+	                System.out.printf(dateTomorrow + ": BUY (%.2f) balance: %.2f\n", openPriceTomorrow, balance);
+	                trades.put(dateTomorrow, new Trade(dateTomorrow, openPriceTomorrow, openPriceTomorrow));
+	                entryTradeDate = dateTomorrow;
+	                inTrade = true;
+	                sb.append("BUY");
+	                sb.append(",");
+			    } else {
+			        sb.append("SELL");
+                    sb.append(",");
+			    }
+			} else {
+			    if(trades.get(entryTradeDate).getMaxPrice() < closePriceToday) {
+			        // Update max price
+	                trades.get(entryTradeDate).setMaxPrice(closePriceToday);    
+			    }
+			    if(rsiYesterday >= 50 && rsiToday < 50) {
+			        // sell
+                    double proceeds = shares * openPriceTomorrow;
+                    balance = cash + proceeds;
+                    cash = balance;
+                    System.out.printf(dateTomorrow + ": SELL (%.2f) balance: %.2f\n", openPriceTomorrow, balance);
+                    trades.get(entryTradeDate).setExitDate(dateTomorrow);
+                    trades.get(entryTradeDate).setExitPrice(openPriceTomorrow);
+                    inTrade = false;
+                    if (trades.get(entryTradeDate).getEntryPrice() < trades.get(entryTradeDate).getExitPrice()) {
+                        trades.get(entryTradeDate).setProfitable(true);
+                    } else {
+                        trades.get(entryTradeDate).setProfitable(false);
+                    }
+                    sb.append("SELL");
+                    sb.append(",");
+			    } else {
+			        sb.append("BUY");
+                    sb.append(",");
+                    sb.append(getChange(trades.get(entryTradeDate).getEntryPrice(), closePriceToday));
+                    sb.append(",");
+			    }
 			}
-			
-			// if(rsiYesterday > 50 && rsiToday <= 50 && inTrade) {
-			if(inTrade) {
-				if(rsiYesterday > 50 && rsiToday <= 50) {
-					// sell
-					double proceeds = shares * openPriceTomorrow;
-					balance = cash + proceeds;
-					cash = balance;
-					System.out.printf(dateTomorrow + ": SELL (%.2f) balance: %.2f\n", openPriceTomorrow, balance);
-					trades.get(entryTradeDate).setExitDate(dateTomorrow);
-					trades.get(entryTradeDate).setExitPrice(openPriceTomorrow);
-					inTrade = false;
-					if (trades.get(entryTradeDate).getEntryPrice() < trades.get(entryTradeDate).getExitPrice()) {
-						trades.get(entryTradeDate).setProfitable(true);
-					} else {
-						trades.get(entryTradeDate).setProfitable(false);
-					}	
-				}
-			}
+			sb.append("\n");
+            pw.write(sb.toString());
+            sb.setLength(0);
 		}
+		
+		pw.close();
 		
 		if (inTrade) {
 			System.out.printf("Current balance: %.2f\n",
@@ -352,6 +393,115 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
 			System.out.printf("Current balance: %.2f\n", balance);
 		}
 	}
+	
+	private void cciTest(Stock stock) throws Exception {
+	    double balance = initialBalance;
+        double cash = balance;
+        int shares = 0;
+
+        String ticker = stock.getTicker();
+        List<HistoricalPrices> historicalPrices = stock.getHistoricalPrices();
+        
+        boolean inTrade = false;
+        String entryTradeDate = "";
+        
+        PrintWriter pw = new PrintWriter(new File(OUTPUT_FOLDER + "/" + ticker + "-cci-backtest.csv"));
+        StringBuilder sb = new StringBuilder();
+        sb.append("date");
+        sb.append(',');
+        sb.append("priceOpen");
+        sb.append(",");
+        sb.append("priceClose");
+        sb.append(",");
+        sb.append("cci");
+        sb.append(",");
+        sb.append("buy/sell (cci)");
+        sb.append(",");
+        sb.append("returns");
+        sb.append("\n");
+        pw.write(sb.toString());
+        sb.setLength(0);
+        
+        for (int i = 75; i < historicalPrices.size(); i++) {
+            String dateTomorrow = "";
+            double openPriceTomorrow = 0;
+            String dateToday = historicalPrices.get(i).getDate();
+            double openPriceToday = historicalPrices.get(i).getOpen();
+            double closePriceToday = historicalPrices.get(i).getClose();
+            if (i != historicalPrices.size() - 1) {
+                dateTomorrow = historicalPrices.get(i + 1).getDate();
+                openPriceTomorrow = historicalPrices.get(i + 1).getOpen();
+            }
+            
+            double cciYesterday = technicals.cci(stock, 40, i - 1);
+            double cciToday = technicals.cci(stock, 40, i);
+            
+            sb.append(dateToday);
+            sb.append(",");
+            sb.append(openPriceToday);
+            sb.append(",");
+            sb.append(closePriceToday);
+            sb.append(",");
+            sb.append(cciToday);
+            sb.append(",");
+            
+            if(!inTrade) {
+                if(cciYesterday < 50 && cciToday >= 50) {
+                    // buy
+                    shares = (int)Math.floor(balance / openPriceTomorrow);
+                    cash = balance - (shares * openPriceTomorrow);
+                    System.out.printf(dateTomorrow + ": BUY (%.2f) balance: %.2f\n", openPriceTomorrow, balance);
+                    trades.put(dateTomorrow, new Trade(dateTomorrow, openPriceTomorrow, openPriceTomorrow));
+                    entryTradeDate = dateTomorrow;
+                    inTrade = true;
+                    sb.append("BUY");
+                    sb.append(",");
+                } else {
+                    sb.append("SELL");
+                    sb.append(",");
+                }
+            } else {
+                if(trades.get(entryTradeDate).getMaxPrice() < closePriceToday) {
+                    // Update max price
+                    trades.get(entryTradeDate).setMaxPrice(closePriceToday);    
+                }
+                if(cciYesterday >= 50 && cciToday < 50) {
+                    // sell
+                    double proceeds = shares * openPriceTomorrow;
+                    balance = cash + proceeds;
+                    cash = balance;
+                    System.out.printf(dateTomorrow + ": SELL (%.2f) balance: %.2f\n", openPriceTomorrow, balance);
+                    trades.get(entryTradeDate).setExitDate(dateTomorrow);
+                    trades.get(entryTradeDate).setExitPrice(openPriceTomorrow);
+                    inTrade = false;
+                    if (trades.get(entryTradeDate).getEntryPrice() < trades.get(entryTradeDate).getExitPrice()) {
+                        trades.get(entryTradeDate).setProfitable(true);
+                    } else {
+                        trades.get(entryTradeDate).setProfitable(false);
+                    }
+                    sb.append("SELL");
+                    sb.append(",");
+                } else {
+                    sb.append("BUY");
+                    sb.append(",");
+                    sb.append(getChange(trades.get(entryTradeDate).getEntryPrice(), closePriceToday));
+                    sb.append(",");
+                }
+            }
+            sb.append("\n");
+            pw.write(sb.toString());
+            sb.setLength(0);
+        }
+        
+        pw.close();
+        
+        if (inTrade) {
+            System.out.printf("Current balance: %.2f\n",
+                    (shares * historicalPrices.get(historicalPrices.size() - 1).getClose()) + cash);
+        } else {
+            System.out.printf("Current balance: %.2f\n", balance);
+        }
+    }
 	
 	private void strategyResults(HashMap<String, Trade> trades) {
 		double winTrades = 0;
