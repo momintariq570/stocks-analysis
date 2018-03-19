@@ -45,7 +45,8 @@ public class HistoricalPricesJdbcTemplate {
 	 * Creates a table
 	 * @param ticker
 	 */
-	public void createTable(final String ticker) {
+	public void createTable(final Stock stock) {
+		String ticker = stock.getTicker();
 		String sql = Sql.CREATE_TABLE;
 		String tableName = ticker + Sql.TABLE_NAME_SUFFIX;
 		sql = sql.replace(Sql.TABLE_NAME_PLACEHOLDER, tableName);
@@ -79,7 +80,9 @@ public class HistoricalPricesJdbcTemplate {
 	 * Insert historical prices for a stock
 	 * @param stock containing historical prices
 	 */
-	public void insertHistoricalPrices(final String ticker, final List<HistoricalPrices> historicalPrices) {
+	public void insertHistoricalPrices(final Stock stock) {
+		String ticker = stock.getTicker();
+		List<HistoricalPrices> historicalPrices = stock.getHistoricalPrices();
 		String sql = Sql.INSERT_HISTORICAL_PRICES;
 		String tableName = ticker + Sql.TABLE_NAME_SUFFIX;
 		sql = sql.replace(Sql.TABLE_NAME_PLACEHOLDER, tableName);

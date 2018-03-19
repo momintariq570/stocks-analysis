@@ -43,8 +43,7 @@ public class StockAnalysisService {
 	 * @throws MalformedURLException
 	 * @throws JSONException 
 	 */
-	public List<HistoricalPrices> getHistoricalPrices(final String ticker) throws MalformedURLException, URISyntaxException, JSONException {
-		historicalPricesJdbcTemplate.createTable(ticker);
+	public List<HistoricalPrices> downloadHistoricalPrices(final String ticker) throws MalformedURLException, URISyntaxException, JSONException {
 		URL url = new URL(quandlBaseUrl.replace("%ticker%", ticker) + quandlApiKey);
 		RestTemplate restTemplate = new RestTemplate();
 		String line = restTemplate.getForObject(url.toURI(), String.class);
@@ -61,7 +60,24 @@ public class StockAnalysisService {
 			historicalPrices.add(new HistoricalPrices(date, open, high, low, close, volume));
 		}
 		logger.info("Downloaded {} historical prices for {}", historicalPrices.size(), ticker);
-		historicalPricesJdbcTemplate.insertHistoricalPrices(ticker, historicalPrices);
 		return historicalPrices;
+	}
+	
+	/**
+	 * Saves historical prices for a stock
+	 * @param stock
+	 */
+	public void saveHistoricalPrices(Stock stock) {
+		historicalPricesJdbcTemplate.createTable(stock);
+		historicalPricesJdbcTemplate.insertHistoricalPrices(stock);
+	}
+	
+	/**
+	 * Gets historical prices for a stock
+	 * @param ticker
+	 * @return
+	 */
+	public List<HistoricalPrices> getHistoricalPricesFromDb(String ticker) {
+		return historicalPricesJdbcTemplate.getHistoricalPrices(ticker);
 	}
 }

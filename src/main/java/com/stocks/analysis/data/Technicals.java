@@ -1,9 +1,12 @@
 package com.stocks.analysis.data;
 
 import java.text.DecimalFormat;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Component;
+
+import com.jayway.jsonpath.internal.function.numeric.Average;
 
 /**
  * Calculates various technical
@@ -15,7 +18,7 @@ import org.springframework.stereotype.Component;
 public class Technicals {
 	
 	public enum TechnicalType {
-		SMA, EMA, RSI, AROON
+		SMA, EMA, RSI, AROON, CCI
 	}
 	
 	/**
@@ -138,6 +141,41 @@ public class Technicals {
 	
 	public double macd(final Stock stock, final int offset) {
 		return ema(stock, 12, offset) - ema(stock, 26, offset); 
+	}
+	
+	/**
+	 * Calculates commodity channel index
+	 * @param stock Stock object containing historical prices
+	 * @param period average period
+	 * @param offset ending point
+	 * @return
+	 */
+	public double cci(final Stock stock, final int period, final int offset) {
+		List<Double> typicalPrices = new ArrayList<>();
+		List<HistoricalPrices> historicalPrices = stock.getHistoricalPrices();
+		int startingPoint = offset - period + 1;
+		int endingPoint = offset;
+		
+		for(int i = startingPoint; i <= endingPoint; i++) {
+			double high = historicalPrices.get(i).getHigh();
+			double low = historicalPrices.get(i).getLow();
+			double close = historicalPrices.get(i).getClose();
+			double typicalPrice = (high + low + close) / 3;
+			typicalPrices.add(typicalPrice);
+		}
+		
+		double avgTypicalPrice = typicalPrices.stream()
+				.mapToDouble(val -> val)
+				.average()
+				.getAsDouble();
+		
+		double meanDeviation = typicalPrices.stream()
+				.mapToDouble(val -> Math.abs(avgTypicalPrice - val))
+				.sum() / period;
+		
+		double cci = (typicalPrices.get(period - 1) - avgTypicalPrice) / (0.015 * meanDeviation);
+		
+		return cci;
 	}
 	
 	/**
