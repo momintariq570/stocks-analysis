@@ -18,7 +18,7 @@ import com.jayway.jsonpath.internal.function.numeric.Average;
 public class Technicals {
 	
 	public enum TechnicalType {
-		SMA, EMA, RSI, AROON, CCI
+		SMA, EMA, RSI, CCI
 	}
 	
 	/**

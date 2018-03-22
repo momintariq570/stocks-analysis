@@ -21,7 +21,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StopWatch;
 
 import com.stocks.analysis.data.HistoricalPrices;
-import com.stocks.analysis.data.HistoricalPricesJdbcTemplate;
 import com.stocks.analysis.data.Stock;
 import com.stocks.analysis.data.StockAnalysisService;
 import com.stocks.analysis.data.Technicals;
@@ -30,9 +29,6 @@ import com.stocks.analysis.data.Technicals.TechnicalType;
 
 @Component
 public class StockServiceCommandLineRunner implements CommandLineRunner {
-	
-	@Autowired
-	private HistoricalPricesJdbcTemplate historicalPricesJdbcTemplate;
 	
 	@Autowired
 	private StockAnalysisService stockAnalysisService;
@@ -325,8 +321,10 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
 				openPriceTomorrow = historicalPrices.get(i + 1).getOpen();
 			}
 			
-			double emaYesterday = technicals.ema(stock, 50, i - 1);
-			double emaToday = technicals.ema(stock, 50, i);
+			double emaShortYesterday = technicals.ema(stock, 30, i - 1);
+			double emaShortToday = technicals.ema(stock, 30, i);
+			double emaLongYesterday = technicals.ema(stock, 50, i - 1);
+            double emaLongToday = technicals.ema(stock, 50, i);
 			
 			sb.append(dateToday);
             sb.append(",");
@@ -334,11 +332,12 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
             sb.append(",");
             sb.append(closePriceToday);
             sb.append(",");
-            sb.append(emaToday);
+            sb.append(emaShortToday);
             sb.append(",");
 			
 			if(!inTrade) {
-			    if(closePriceYesterday < emaYesterday && closePriceToday > emaToday) {
+			    // if(closePriceYesterday < emaShortYesterday && closePriceToday > emaShortToday) {
+			    if(emaShortYesterday < emaLongYesterday && emaShortToday > emaLongToday) {
 			        // buy
 	                shares = (int)Math.floor(balance / openPriceTomorrow);
 	                cash = balance - (shares * openPriceTomorrow);
@@ -357,7 +356,8 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
 			        // Update max price
 	                trades.get(entryTradeDate).setMaxPrice(closePriceToday);    
 			    }
-			    if((closePriceYesterday > emaYesterday && closePriceToday < emaToday)) {
+			    // if((closePriceYesterday > emaShortYesterday && closePriceToday < emaShortToday)) {
+			    if(emaShortYesterday > emaLongYesterday && emaShortToday < emaLongToday) {
 			        // sell
                     double proceeds = shares * openPriceTomorrow;
                     balance = cash + proceeds;
@@ -372,6 +372,8 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
                         trades.get(entryTradeDate).setProfitable(false);
                     }
                     sb.append("SELL");
+                    sb.append(",");
+                    sb.append(getChange(trades.get(entryTradeDate).getEntryPrice(), closePriceToday));
                     sb.append(",");
 			    } else {
 			        sb.append("BUY");
@@ -482,6 +484,8 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
                     }
                     sb.append("SELL");
                     sb.append(",");
+                    sb.append(getChange(trades.get(entryTradeDate).getEntryPrice(), closePriceToday));
+                    sb.append(",");
 			    } else {
 			        sb.append("BUY");
                     sb.append(",");
@@ -590,6 +594,8 @@ public class StockServiceCommandLineRunner implements CommandLineRunner {
                         trades.get(entryTradeDate).setProfitable(false);
                     }
                     sb.append("SELL");
+                    sb.append(",");
+                    sb.append(getChange(trades.get(entryTradeDate).getEntryPrice(), closePriceToday));
                     sb.append(",");
                 } else {
                     sb.append("BUY");
